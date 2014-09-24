@@ -16,7 +16,7 @@ static struct sock_filter masterfilter[] = {
     /* validate arch */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, arch)),
     BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, AUDIT_ARCH_X86_64, 1, 0),
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 
     /* load syscall */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
@@ -66,7 +66,7 @@ static struct sock_filter masterfilter[] = {
     Allow(write),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 };
 
 struct sock_fprog masterprog = {
@@ -78,7 +78,7 @@ struct sock_filter compilefilter[] = {
     /* validate arch */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, arch)),
     BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, AUDIT_ARCH_X86_64, 1, 0),
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 
     /* load syscall */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
@@ -125,7 +125,7 @@ struct sock_filter compilefilter[] = {
     Allow(write),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 };
 
 struct sock_fprog compileprog = {
@@ -137,7 +137,7 @@ struct sock_filter runfilter[] = {
     /* validate arch */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, arch)),
     BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, AUDIT_ARCH_X86_64, 1, 0),
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 
     /* load syscall */
     BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
@@ -151,7 +151,7 @@ struct sock_filter runfilter[] = {
     Allow(write),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
 };
 struct sock_fprog runprog = {
     .len = sizeof(runfilter)/sizeof(runfilter[0]),
