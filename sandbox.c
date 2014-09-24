@@ -12,6 +12,12 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
+
+#include <linux/filter.h>
+#include <linux/seccomp.h>
+#include <linux/audit.h>
 
 #include "sandbox.h"
 
@@ -146,7 +152,7 @@ void readpost(int dir)
     close(fd);
 }
 
-void run(char *dir, char **cmd, void *filter)
+void run(char *dir, char **cmd, struct sock_fprog *filter)
 {
     int pid, status, st;
     char *env[] = {"LD_LIBRARY_PATH=/lib64", "PATH=/", NULL};
@@ -159,6 +165,8 @@ void run(char *dir, char **cmd, void *filter)
             failure("Unable to dir\n");
         if (chroot(dir) == -1)
             failure("Unable to chroot\n");
+        if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, filter) == -1)
+            failure("Could not start seccomp");
         if (execve(cmd[0], cmd, env) == -1)
             failure("Unable to exec");
     } else {
@@ -190,10 +198,10 @@ void runsession()
     setupcompile(compilepath, sizeof compilepath, &compiledir);
     readpost(compiledir);
     setuprun(runpath, sizeof runpath, compiledir, &rundir);
-    run(compilepath, compilecmd, compilefilter);
+    run(compilepath, compilecmd, &compileprog);
     if (linkat(compiledir, "a.out", rundir, "a.out", 0) == -1)
         failure("Could not access compiled output");
-    run(runpath, runcmd, runfilter);
+    run(runpath, runcmd, &runprog);
 }
 
 #define KiB 1024
@@ -219,6 +227,10 @@ void limit()
         failure("Could not limit rss\n");
     if (setrlimit(RLIMIT_STACK, &(struct rlimit){.rlim_cur=32*MiB, .rlim_max=32*MiB}) == -1)
         failure("Could not limit stack\n");
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
+        failure("Could not prevent new privs");
+    if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &masterprog) == -1)
+        failure("Could not start seccomp");
 }
 
 int main(int argc, char **argv)

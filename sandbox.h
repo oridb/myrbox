@@ -1,3 +1,3 @@
-extern char masterfilter[];
-extern char compilefilter[];
-extern char runfilter[];
+extern struct sock_fprog masterprog;
+extern struct sock_fprog compileprog;
+extern struct sock_fprog runprog;
