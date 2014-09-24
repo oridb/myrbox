@@ -234,10 +234,8 @@ void limit()
         failure("Could not limit address space\n");
     if (setrlimit(RLIMIT_CPU, &(struct rlimit){.rlim_cur=1, .rlim_max=1}) == -1)
         failure("Could not limit u\n");
-    /*
-    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=256, .rlim_max=256}) == -1)
+    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=512, .rlim_max=512}) == -1)
         failure("Could not limit nproc\n");
-    */
     if (setrlimit(RLIMIT_CORE, &(struct rlimit){.rlim_cur=0, .rlim_max=0}) == -1)
         failure("Could not limit core\n");
     if (setrlimit(RLIMIT_FSIZE, &(struct rlimit){.rlim_cur=32*MiB, .rlim_max=32*MiB}) == -1)
