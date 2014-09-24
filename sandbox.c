@@ -25,8 +25,12 @@
 #define Scratch "/home/ori/www/eigenstate.org/sandbox-scratch"
 #define Template "/home/ori/www/eigenstate/sandbox/template"
 */
-#define Scratch "/home/ori/src/myr/sandbox/"
+#define Scratch "/home/ori/src/myr/myrbox/"
 #define Template "/test-template"
+#define KiB (1024)
+#define MiB (1024*KiB)
+#define Maxsize 16*KiB
+
 int urandom;
 
 void failure(char *msg, ...)
@@ -141,14 +145,34 @@ void dropaccess()
 void readpost(int dir)
 {
     int fd;
-    static const char output[] =
-        "use std\nconst main = {; std.put(\"hello world!\\n\")}\n";
+    char buf[Maxsize];
+    ssize_t n, nread, nwritten;
 
     fd = openat(dir, "in.myr", O_WRONLY | O_CREAT, 0600);
     if (fd == -1)
         failure("Could not read post data\n");
-    if (write(fd, output, strlen(output)) != strlen(output))
-        failure("Could not write post data to disk\n");
+    nread = 0;
+    while (nread < Maxsize) {
+        n = read(0, buf, Maxsize - nread);
+        if (n < 0)
+            failure("Failed to read POST data\n");
+        else if (n == 0)
+            break;
+        else
+            nread += n;
+    }
+    nwritten = 0;
+    while (nwritten < nread) {
+        n = write(fd, buf + nwritten, nread - nwritten);
+        if (n < 0)
+            failure("failed to write POST data\n");
+        else if (n == 0)
+            break;
+        else
+            nwritten += n;
+    }
+    if (nwritten != nread)
+        failure("failed to write POST data\n");
     close(fd);
 }
 
@@ -203,9 +227,6 @@ void runsession()
         failure("Could not access compiled output");
     run(runpath, runcmd, &runprog);
 }
-
-#define KiB 1024
-#define MiB 1024*KiB
 
 void limit()
 {

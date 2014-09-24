@@ -43,6 +43,7 @@ static struct sock_filter masterfilter[] = {
     Allow(getrlimit),
     Allow(getrusage),
     Allow(gettid),
+    Allow(kill),
     Allow(linkat),
     Allow(lseek),
     Allow(lstat),
