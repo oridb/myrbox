@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ftw.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,7 +27,11 @@
 #define MiB (1024*KiB)
 #define Maxsize 16*KiB
 
-int urandom;
+int urandom;          /* fd for /dev/urandom */
+char buildpath[1024];
+int builddir;
+char runpath[1024];
+int rundir;
 
 void failure(char *msg, ...)
 {
@@ -87,6 +92,10 @@ int tempdir(char *base, char *buf, size_t nbuf)
     return open(buf, O_DIRECTORY | O_RDONLY);
 }
 
+/* The files neede for building. This is very system specific, unfortunately.
+ *
+ * The libraries can be determined by 'ldd'ing the required executables.
+ */
 char *buildfiles[] = {
     /* binaries */
     "myrbuild",
@@ -112,48 +121,26 @@ char *buildfiles[] = {
     NULL
 };
 
-void setupcompile(char *tmppath, size_t npath, int *compiledir)
+void setupcompile()
 {
-    int tmpdir, bindir;
+    int tmpldir;
     char **p;
 
-    tmpdir = tempdir("/build", tmppath, npath);
-    if (tmpdir == -1)
-        failure("Could not create scratch directory\n");
-    if (mkdirat(tmpdir, "lib64", 0700) == -1)
+    if (mkdirat(builddir, "lib64", 0700) == -1)
         failure("Could not create lib64 directory\n");
-    if (mkdirat(tmpdir, "lib", 0700) == -1)
+    if (mkdirat(builddir, "lib", 0700) == -1)
         failure("Could not create lib directory\n");
-    if (mkdirat(tmpdir, "lib/myr", 0700) == -1)
+    if (mkdirat(builddir, "lib/myr", 0700) == -1)
         failure("Could not create lib/myr directory\n");
-    if (mkdirat(tmpdir, "tmp", 0700) == -1)
+    if (mkdirat(builddir, "tmp", 0700) == -1)
         failure("Could not create tmp directory\n");
-    bindir = open(Template, O_RDONLY);
-    if (bindir == -1)
+    tmpldir = open(Template, O_RDONLY);
+    if (tmpldir == -1)
         failure("Could not find binaries\n");
 
     for (p = buildfiles; *p; p++)
-        if (linkat(bindir, *p, tmpdir, *p, 0) == -1)
+        if (linkat(tmpldir, *p, builddir, *p, 0) == -1)
             failure("Could not initialize scratch directory: %s\n", *p);
-    *compiledir = tmpdir;
-}
-
-void setuprun(char *tmppath, size_t npath, int compiledir, int *rundir)
-{
-    int tmpdir;
-
-    tmpdir = tempdir("/run", tmppath, npath);
-    if (tmpdir == -1)
-        failure("Could not create scratch directory\n");
-    *rundir = tmpdir;
-}
-
-/*
-  chroots into the scratch directory, filtersas many of the
-  syscalls as it can, and sets some fairly strict ulimit values.
- */
-void dropaccess()
-{
 }
 
 void readpost(int dir)
@@ -223,25 +210,19 @@ void run(char *dir, char **cmd, struct sock_fprog *filter)
 void runsession()
 {
     /* compile commands */
-    char *compilecmd[] = {"myrbuild", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
+    char *buildcmd[] = {"myrbuild", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
     char *runcmd[] = {"/a.out", NULL};
-    /* run commands */
-    char compilepath[1024], runpath[1024];
-    int compiledir, rundir;
 
-    if (chdir(Scratch) == -1)
-        failure("Could not chdir %s\n", Scratch);
-    if (chroot(Scratch) == -1)
-        failure("Could not chroot\n");
-    setupcompile(compilepath, sizeof compilepath, &compiledir);
-    readpost(compiledir);
-    setuprun(runpath, sizeof runpath, compiledir, &rundir);
-    run(compilepath, compilecmd, &compileprog);
-    if (linkat(compiledir, "a.out", rundir, "a.out", 0) == -1)
+    /* run commands */
+    setupcompile();
+    readpost(builddir);
+    run(buildpath, buildcmd, &compileprog);
+    if (linkat(builddir, "a.out", rundir, "a.out", 0) == -1)
         failure("Could not access compiled output");
     run(runpath, runcmd, &runprog);
 }
 
+/* sets up resource limits and chroots */
 void limit()
 {
     if (setrlimit(RLIMIT_AS, &(struct rlimit){.rlim_cur=512*MiB, .rlim_max=512*MiB}) == -1)
@@ -260,10 +241,22 @@ void limit()
         failure("Could not limit rss\n");
     if (setrlimit(RLIMIT_STACK, &(struct rlimit){.rlim_cur=32*MiB, .rlim_max=32*MiB}) == -1)
         failure("Could not limit stack\n");
+    if (chdir(Scratch) == -1)
+        failure("Could not chdir %s\n", Scratch);
+    if (chroot(Scratch) == -1)
+        failure("Could not chroot\n");
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) == -1)
         failure("Could not prevent new privs");
     if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &masterprog) == -1)
         failure("Could not start seccomp");
+}
+
+int deleteent(const char *fpath, struct stat *sb, int typeflag, strcut FTW* ftwbuf)
+{
+    printf("removing %s\n");
+    /* we should try to keep going */
+    if (remove(fpath) == -1)
+        fprintf(stderr, "Could not remove %s\n", fpath);
 }
 
 int main(int argc, char **argv)
@@ -271,11 +264,25 @@ int main(int argc, char **argv)
     int pid;
     int status, st;
 
-    /* set things up for killing */
+    /* /dev/urandom can't be opened after we chroot */
     urandom = open("/dev/urandom", O_RDONLY);
     if (urandom == -1)
         failure("Could not open /dev/urandom");
+
     limit();
+
+    /*
+     * creates scratch directories: this needs to be done in the
+     * watchdog for reliable cleanup.
+     */
+    builddir = tempdir("/build", buildpath, sizeof buildpath);
+    if (builddir == -1)
+        failure("Could not create scratch directory\n");
+    rundir = tempdir("/run", runpath, sizeof runpath);
+    if (rundir == -1)
+        failure("Could not create scratch directory\n");
+
+    /* and start up the process that does actual work */
     pid = fork();
     if (pid == -1) {
         failure("Could not fork");
@@ -296,6 +303,8 @@ int main(int argc, char **argv)
             else
                 message("sandbox exited witout signal or status\n");
         }
+        nftw(builddir, deleteent, FTW_DEPTH);
+        nftw(rundir, deleteent, FTW_DEPTH);
     }
     return 0;
 }
