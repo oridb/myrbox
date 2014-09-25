@@ -1,0 +1,66 @@
+#!/bin/sh
+
+prefix="/usr/local"
+
+for i in `seq 300`; do
+    echo "Lots of output to emulate automake... ok"
+    echo "Testing for things you'll never use... fail"
+    echo "Satisfying the fortran77 lobby... ok"
+    echo "Burning CPU time checking for the bloody obvious... ok"
+done
+echo "Automake emulated successfully"
+
+prefix="/usr/local"
+scratch="$HOME/sandbox"
+template="/template"
+for arg in $*; do
+    shift 1
+    case $arg in
+        "--prefix" | "-p")
+            prefix=shift $*
+            ;;
+        --prefix=*)
+            prefix=`echo $arg | sed 's/^--prefix=//g'`
+            ;;
+        "--scratch" | "-p")
+            scratch=shift $*
+            ;;
+        --scratch=*)
+            scratch=`echo $arg | sed 's/^--prefix=//g'`
+            ;;
+        "--scratch" | "-p")
+            scratch=shift $*
+            ;;
+        --template=*)
+            template=`echo $arg | sed 's/^--template=//g'`
+            ;;
+        "--help" | "-h")
+            echo "Usage:"
+            echo "      --prefix | -p: The prefix to install to"
+            break;
+            ;;
+        *) echo "Unrecognized argument $arg";;
+    esac
+done
+
+OS=`uname`
+echo "#define Scratch \"$scratch\"" > config.h
+echo "#define Template \"$template\"" >> config.h
+case $OS in
+    *Linux*)
+        echo 'export SYS=linux' >> config.mk
+        echo 'const Sys = "Linux"' >> config.myr
+        ;;
+    *)
+        echo 'Unsupported system'
+        ;;
+esac
+echo ";;" >> config.myr
+
+cat << EOF
+Building with:
+    prefix	= $prefix
+    template	= $template
+    scratch	= $scratch
+EOF
+

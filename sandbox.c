@@ -20,13 +20,8 @@
 #include <linux/audit.h>
 
 #include "sandbox.h"
+#include "config.h"
 
-/*
-#define Scratch "/home/ori/www/eigenstate.org/sandbox-scratch"
-#define Template "/home/ori/www/eigenstate/sandbox/template"
-*/
-#define Scratch "/home/ori/src/myr/myrbox/"
-#define Template "/test-template"
 #define KiB (1024)
 #define MiB (1024*KiB)
 #define Maxsize 16*KiB
@@ -64,7 +59,7 @@ int tempdir(char *base, char *buf, size_t nbuf)
 
     read(urandom, r, sizeof r);
     n = snprintf(buf, nbuf, "%s/%016lx%016lx%016lx%016lx", base, r[0], r[1], r[2], r[3]);
-    /* we expect a length of base + 16 chars of random  + slash */
+    /* we expect a length of base + 64 chars of random  + slash */
     if (n != 64 + 1 + strlen(base))
         failure("Could not create scratch directory: %s (len=%d)\n", buf, n);
     if (mkdir(buf, 0700) == -1)
