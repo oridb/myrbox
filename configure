@@ -26,7 +26,7 @@ for arg in $*; do
             scratch=shift $*
             ;;
         --scratch=*)
-            scratch=`echo $arg | sed 's/^--prefix=//g'`
+            scratch=`echo $arg | sed 's/^--scratch=//g'`
             ;;
         "--scratch" | "-p")
             scratch=shift $*

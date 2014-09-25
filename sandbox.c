@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -39,6 +39,24 @@ void failure(char *msg, ...)
     exit(1);
 }
 
+/*
+ * Waitpid will wait for any state change. We only
+ * want the state changes where a process exits.
+ */
+int waitexit(pid_t pid, int *status, int flags)
+{
+    int st;
+
+    do {
+        st = waitpid(pid, status, flags);
+        if (flags & WNOHANG)
+            break;
+    } while (!WIFEXITED(*status) && !WIFSIGNALED(*status));
+    if (WIFEXITED(*status) || WIFSIGNALED(*status))
+        return st;
+    return -1;
+}
+
 void message(char *msg, ...)
 {
     va_list ap;
@@ -58,7 +76,8 @@ int tempdir(char *base, char *buf, size_t nbuf)
     uint64_t r[4];
 
     read(urandom, r, sizeof r);
-    n = snprintf(buf, nbuf, "%s/%016lx%016lx%016lx%016lx", base, r[0], r[1], r[2], r[3]);
+    n = snprintf(buf, nbuf, "%s/%016"PRIx64"%016"PRIx64"%016"PRIx64"%016"PRIx64"",
+                 base, r[0], r[1], r[2], r[3]);
     /* we expect a length of base + 64 chars of random  + slash */
     if (n != 64 + 1 + strlen(base))
         failure("Could not create scratch directory: %s (len=%d)\n", buf, n);
@@ -189,7 +208,7 @@ void run(char *dir, char **cmd, struct sock_fprog *filter)
         if (execve(cmd[0], cmd, env) == -1)
             failure("Unable to exec");
     } else {
-        st = waitpid(pid, &status, 0);
+        st = waitexit(pid, &status, 0);
         if (st == -1)
             message("Failed to wait for PID %d\n", pid);
         if (WIFEXITED(status))
@@ -211,7 +230,7 @@ void runsession()
     int compiledir, rundir;
 
     if (chdir(Scratch) == -1)
-        failure("Could not chdir\n");
+        failure("Could not chdir %s\n", Scratch);
     if (chroot(Scratch) == -1)
         failure("Could not chroot\n");
     setupcompile(compilepath, sizeof compilepath, &compiledir);
@@ -266,7 +285,7 @@ int main(int argc, char **argv)
         runsession();
     } else {
         usleep(500*1000); /* 500 ms for the command to run */
-        st = waitpid(pid, &status, WNOHANG);
+        st = waitexit(pid, &status, WNOHANG);
         if (st == 0 && kill(-pid, 9) == -1) {
             failure("Could not kill sid %d\n", pid);
         } else {
