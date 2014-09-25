@@ -71,7 +71,8 @@ void message(char *msg, ...)
     va_end(ap);
 }
 
-/* generates an exclusively opened directory
+/*
+ * generates an exclusively opened directory
  * as a subdirectory of 'base', returning
  * the FD.
  */
@@ -92,8 +93,8 @@ int tempdir(char *base, char *buf, size_t nbuf)
     return open(buf, O_DIRECTORY | O_RDONLY);
 }
 
-/* The files neede for building. This is very system specific, unfortunately.
- *
+/*
+ * The files needed for building. This is very system specific, unfortunately.
  * The libraries can be determined by 'ldd'ing the required executables.
  */
 char *buildfiles[] = {
