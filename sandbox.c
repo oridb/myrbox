@@ -40,8 +40,9 @@ void failure(char *msg, ...)
 
     va_start(ap, msg);
     vfprintf(stderr, msg, ap);
+    fprintf(stderr, "\terr: %s\n", strerror(errno));
     va_end(ap);
-    printf("\terr: %s\n", strerror(errno));
+
     exit(1);
 }
 
@@ -56,7 +57,7 @@ int waitexit(pid_t pid, int *status, int flags)
     do {
         st = waitpid(pid, status, flags);
         if (flags & WNOHANG)
-            break;
+            return st;
     } while (!WIFEXITED(*status) && !WIFSIGNALED(*status));
     if (WIFEXITED(*status) || WIFSIGNALED(*status))
         return st;
@@ -68,7 +69,7 @@ void message(char *msg, ...)
     va_list ap;
 
     va_start(ap, msg);
-    vfprintf(stderr, msg, ap);
+    vfprintf(stdout, msg, ap);
     va_end(ap);
 }
 
@@ -90,7 +91,6 @@ int tempdir(char *base, char *buf, size_t nbuf)
         failure("Could not create scratch directory: %s (len=%d)\n", buf, n);
     if (mkdir(buf, 0700) == -1)
         failure("Could not create scratch directory %s\n", buf);
-    printf("Created directory: %s\n", buf);
     return open(buf, O_DIRECTORY | O_RDONLY);
 }
 
@@ -200,12 +200,10 @@ void run(char *dir, char **cmd, struct sock_fprog *filter)
         st = waitexit(pid, &status, 0);
         if (st == -1)
             message("Failed to wait for PID %d\n", pid);
-        if (WIFEXITED(status))
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
             message("%s: exited with status %d\n", cmd[0], WEXITSTATUS(status));
         else if (WIFSIGNALED(status))
             message("%s: exited with signal %d\n", cmd[0], WTERMSIG(status));
-        else
-            message("%s: exited witout signal or status\n", cmd[0]);
     }
 }
 
@@ -231,7 +229,7 @@ void limit()
         failure("Could not limit address space\n");
     if (setrlimit(RLIMIT_CPU, &(struct rlimit){.rlim_cur=1, .rlim_max=1}) == -1)
         failure("Could not limit u\n");
-    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=512, .rlim_max=512}) == -1)
+    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=128, .rlim_max=128}) == -1)
         failure("Could not limit nproc\n");
     if (setrlimit(RLIMIT_CORE, &(struct rlimit){.rlim_cur=0, .rlim_max=0}) == -1)
         failure("Could not limit core\n");
@@ -273,6 +271,7 @@ int main(int argc, char **argv)
 
     limit();
 
+    printf("Content-type: text/plain\r\n\r\n");
     /*
      * creates scratch directories: this needs to be done in the
      * watchdog for reliable cleanup.
@@ -294,16 +293,17 @@ int main(int argc, char **argv)
         runsession();
     } else {
         usleep(500*1000); /* 500 ms for the command to run */
+        status = 0;
         st = waitexit(pid, &status, WNOHANG);
         if (st == 0 && kill(-pid, 9) == -1) {
             failure("Could not kill sid %d\n", pid);
-        } else {
-            if (WIFEXITED(status))
-                message("sandbox exited with status %d\n", WEXITSTATUS(status));
+        } else if (st != 1) {
+            if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+                message("exited with status %d\n", WEXITSTATUS(status));
             else if (WIFSIGNALED(status))
-                message("sandbox exited with signal %d\n", WTERMSIG(status));
-            else
-                message("sandbox exited witout signal or status\n");
+                message("exited with signal %d\n", WTERMSIG(status));
+        } else {
+            failure("failed to wait for PID %d\n", pid);
         }
         nftw(buildpath, deleteent, FTW_DEPTH, 512);
         nftw(runpath, deleteent, FTW_DEPTH, 512);
