@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -252,12 +253,12 @@ void limit()
         failure("Could not start seccomp");
 }
 
-int deleteent(const char *fpath, struct stat *sb, int typeflag, strcut FTW* ftwbuf)
+int deleteent(const char *fpath, const struct stat *sb, int typeflag, struct FTW* ftwbuf)
 {
-    printf("removing %s\n");
     /* we should try to keep going */
     if (remove(fpath) == -1)
         fprintf(stderr, "Could not remove %s\n", fpath);
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -304,8 +305,8 @@ int main(int argc, char **argv)
             else
                 message("sandbox exited witout signal or status\n");
         }
-        nftw(builddir, deleteent, FTW_DEPTH);
-        nftw(rundir, deleteent, FTW_DEPTH);
+        nftw(buildpath, deleteent, FTW_DEPTH, 512);
+        nftw(runpath, deleteent, FTW_DEPTH, 512);
     }
     return 0;
 }
