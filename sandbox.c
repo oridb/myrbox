@@ -39,10 +39,18 @@ void failure(char *msg, ...)
     va_list ap;
 
     va_start(ap, msg);
+    fprintf(stdout, "Internal error: ");
+    vfprintf(stdout, msg, ap);
+    fprintf(stdout, "\terr: %s\n", strerror(errno));
+    va_end(ap);
+
+    va_start(ap, msg);
     vfprintf(stderr, msg, ap);
     fprintf(stderr, "\terr: %s\n", strerror(errno));
     va_end(ap);
 
+    fflush(stdout);
+    fflush(stderr);
     exit(1);
 }
 
@@ -70,6 +78,8 @@ void message(char *msg, ...)
 
     va_start(ap, msg);
     vfprintf(stdout, msg, ap);
+    fflush(stdout);
+    fflush(stderr);
     va_end(ap);
 }
 
@@ -142,7 +152,7 @@ void setupcompile()
 
     for (p = buildfiles; *p; p++)
         if (linkat(tmpldir, *p, builddir, *p, 0) == -1)
-            failure("Could not initialize scratch directory: %s\n", *p);
+            failure("Could not initialize scratch directory copy of '%s'\n", *p);
 }
 
 void readpost(int dir)
@@ -179,7 +189,7 @@ void readpost(int dir)
     close(fd);
 }
 
-void run(char *dir, char **cmd, struct sock_fprog *filter)
+void run(char *dir, char **cmd, struct sock_fprog *filter, int catchstderr)
 {
     int pid, status, st;
     char *env[] = {"LD_LIBRARY_PATH=/lib64", "PATH=/", NULL};
@@ -188,6 +198,8 @@ void run(char *dir, char **cmd, struct sock_fprog *filter)
     if (pid == -1) {
         failure("Could not fork\n");
     } else if (pid == 0) {
+        if (catchstderr && dup2(1, 2) == -1)
+            failure("Unable to capture stderr\n");
         if (chdir(dir) == -1)
             failure("Unable to dir\n");
         if (chroot(dir) == -1)
@@ -198,12 +210,14 @@ void run(char *dir, char **cmd, struct sock_fprog *filter)
             failure("Unable to exec");
     } else {
         st = waitexit(pid, &status, 0);
-        if (st == -1)
-            message("Failed to wait for PID %d\n", pid);
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
-            message("%s: exited with status %d\n", cmd[0], WEXITSTATUS(status));
+        if (st == 0)
+            failure("We should only get status==0 with WNOHANG");
+        else if (st == -1)
+            failure("Failed to wait for PID %d\n", pid);
+        else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+            failure("%s: exited with status %d\n", cmd[0], WEXITSTATUS(status));
         else if (WIFSIGNALED(status))
-            message("%s: exited with signal %d\n", cmd[0], WTERMSIG(status));
+            failure("%s: exited with signal %d\n", cmd[0], WTERMSIG(status));
     }
 }
 
@@ -216,10 +230,12 @@ void runsession()
     /* run commands */
     setupcompile();
     readpost(builddir);
-    run(buildpath, buildcmd, &compileprog);
-    if (linkat(builddir, "a.out", rundir, "a.out", 0) == -1)
+    run(buildpath, buildcmd, &compileprog, 1);
+    if (linkat(builddir, "a.out", rundir, "a.out", 0) == -1) {
+        message("Could not access compiled output");
         failure("Could not access compiled output");
-    run(runpath, runcmd, &runprog);
+    }
+    run(runpath, runcmd, &runprog, 1);
 }
 
 /* sets up resource limits and chroots */
@@ -276,6 +292,9 @@ int main(int argc, char **argv)
      * creates scratch directories: this needs to be done in the
      * watchdog for reliable cleanup.
      */
+    printf("Building\n");
+    fflush(stdout);
+    fflush(stderr);
     builddir = tempdir("/build", buildpath, sizeof buildpath);
     if (builddir == -1)
         failure("Could not create scratch directory\n");
@@ -295,8 +314,10 @@ int main(int argc, char **argv)
         usleep(500*1000); /* 500 ms for the command to run */
         status = 0;
         st = waitexit(pid, &status, WNOHANG);
-        if (st == 0 && kill(-pid, 9) == -1) {
-            failure("Could not kill sid %d\n", pid);
+        if (st == 0) {
+            message("Invcation timed out\n");
+            if (kill(-pid, 9) == -1) 
+                failure("Could not kill sid %d\n", pid);
         } else if (st != 1) {
             if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
                 message("exited with status %d\n", WEXITSTATUS(status));
