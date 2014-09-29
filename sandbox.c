@@ -83,6 +83,20 @@ void message(char *msg, ...)
     va_end(ap);
 }
 
+int tempname(char *buf, size_t nbuf, char *base)
+{
+    uint64_t r[4];
+    size_t n;
+
+    read(urandom, r, sizeof r);
+    n = snprintf(buf, nbuf, "%s%016"PRIx64"%016"PRIx64"%016"PRIx64"%016"PRIx64"",
+                 base, r[0], r[1], r[2], r[3]);
+    /* we expect a length of base + 64 chars of random  */
+    if (n != 64 + strlen(base))
+        failure("Could not create filename\n", buf, n);
+    return 0;
+}
+
 /*
  * generates an exclusively opened directory
  * as a subdirectory of 'base', returning
@@ -90,15 +104,8 @@ void message(char *msg, ...)
  */
 int tempdir(char *base, char *buf, size_t nbuf)
 {
-    size_t n;
-    uint64_t r[4];
-
-    read(urandom, r, sizeof r);
-    n = snprintf(buf, nbuf, "%s/%016"PRIx64"%016"PRIx64"%016"PRIx64"%016"PRIx64"",
-                 base, r[0], r[1], r[2], r[3]);
-    /* we expect a length of base + 64 chars of random  + slash */
-    if (n != 64 + 1 + strlen(base))
-        failure("Could not create scratch directory: %s (len=%d)\n", buf, n);
+    if (tempname(buf, nbuf, base) == -1)
+        failure("Could not generate temporary name\n");
     if (mkdir(buf, 0700) == -1)
         failure("Could not create scratch directory %s\n", buf);
     return open(buf, O_DIRECTORY | O_RDONLY);
@@ -155,11 +162,29 @@ void setupcompile()
             failure("Could not initialize scratch directory copy of '%s'\n", *p);
 }
 
+void writeall(int fd, char *buf, ssize_t nread)
+{
+    ssize_t n, nwritten;
+
+    nwritten = 0;
+    while (nwritten < nread) {
+        n = write(fd, buf + nwritten, nread - nwritten);
+        if (n < 0)
+            failure("failed to write POST data\n");
+        else if (n == 0)
+            break;
+        else
+            nwritten += n;
+    }
+    if (nwritten != nread)
+        failure("failed to write POST data\n");
+}
+
 void readpost(int dir)
 {
     int fd;
     char buf[Maxsize];
-    ssize_t n, nread, nwritten;
+    ssize_t n, nread;
 
     fd = openat(dir, "in.myr", O_WRONLY | O_CREAT, 0600);
     if (fd == -1)
@@ -174,18 +199,7 @@ void readpost(int dir)
         else
             nread += n;
     }
-    nwritten = 0;
-    while (nwritten < nread) {
-        n = write(fd, buf + nwritten, nread - nwritten);
-        if (n < 0)
-            failure("failed to write POST data\n");
-        else if (n == 0)
-            break;
-        else
-            nwritten += n;
-    }
-    if (nwritten != nread)
-        failure("failed to write POST data\n");
+    writeall(fd, buf, nread);
     close(fd);
 }
 
@@ -277,8 +291,10 @@ int deleteent(const char *fpath, const struct stat *sb, int typeflag, struct FTW
 
 int main(int argc, char **argv)
 {
+    char logname[1024];
+    int status, st, linkst;
+    int logdir;
     int pid;
-    int status, st;
 
     /* /dev/urandom can't be opened after we chroot */
     urandom = open("/dev/urandom", O_RDONLY);
@@ -295,12 +311,17 @@ int main(int argc, char **argv)
     printf("Building\n");
     fflush(stdout);
     fflush(stderr);
-    builddir = tempdir("/build", buildpath, sizeof buildpath);
+    builddir = tempdir("/build/", buildpath, sizeof buildpath);
     if (builddir == -1)
         failure("Could not create scratch directory\n");
-    rundir = tempdir("/run", runpath, sizeof runpath);
+    rundir = tempdir("/run/", runpath, sizeof runpath);
     if (rundir == -1)
         failure("Could not create scratch directory\n");
+    logdir = open("/log", O_RDONLY); 
+    if (logdir == -1)
+        failure("Could not open log dir\n");
+    if (tempname(logname, sizeof logname, "in.myr.") == -1)
+        failure("Could not generate log file name");
 
     /* and start up the process that does actual work */
     pid = fork();
@@ -326,8 +347,11 @@ int main(int argc, char **argv)
         } else {
             failure("failed to wait for PID %d\n", pid);
         }
+        linkst = linkat(builddir, "in.myr", logdir, logname, 0);
         nftw(buildpath, deleteent, FTW_DEPTH, 512);
         nftw(runpath, deleteent, FTW_DEPTH, 512);
+        if (linkst == -1)
+            failure("Could not link logfile\n");
     }
     return 0;
 }
