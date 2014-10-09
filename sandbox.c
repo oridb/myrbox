@@ -265,6 +265,8 @@ int runsession(void *p)
 /* sets up resource limits and chroots */
 void limit()
 {
+    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=2048, .rlim_max=2048}) == -1)
+        failure("Could not limit nproc\n");
     if (setrlimit(RLIMIT_AS, &(struct rlimit){.rlim_cur=512*MiB, .rlim_max=512*MiB}) == -1)
         failure("Could not limit address space\n");
     if (setrlimit(RLIMIT_CPU, &(struct rlimit){.rlim_cur=1, .rlim_max=1}) == -1)
