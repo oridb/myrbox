@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ftw.h>
+#include <sched.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -16,6 +17,7 @@
 #include <sys/wait.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/capability.h>
 
 #include <linux/filter.h>
 #include <linux/seccomp.h>
@@ -41,7 +43,6 @@ void failure(char *msg, ...)
     va_start(ap, msg);
     fprintf(stdout, "Internal error: ");
     vfprintf(stdout, msg, ap);
-    fprintf(stdout, "\terr: %s\n", strerror(errno));
     va_end(ap);
 
     va_start(ap, msg);
@@ -235,12 +236,20 @@ void run(char *dir, char **cmd, struct sock_fprog *filter, int catchstderr)
     }
 }
 
-void runsession()
+int runsession(void *p)
 {
-    /* compile commands */
     char *buildcmd[] = {"myrbuild", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
     char *runcmd[] = {"/a.out", NULL};
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data;
 
+    /* more priv drops */
+    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=16, .rlim_max=16}) == -1)
+        failure("Could not limit nproc\n");
+    capget(&hdr, &data);
+    data.effective = 0;
+    data.permitted = 0;
+    capset(&hdr, &data);
     /* run commands */
     setupcompile();
     readpost(builddir);
@@ -250,6 +259,7 @@ void runsession()
         failure("Could not access compiled output");
     }
     run(runpath, runcmd, &runprog, 1);
+    return 0;
 }
 
 /* sets up resource limits and chroots */
@@ -259,8 +269,6 @@ void limit()
         failure("Could not limit address space\n");
     if (setrlimit(RLIMIT_CPU, &(struct rlimit){.rlim_cur=1, .rlim_max=1}) == -1)
         failure("Could not limit u\n");
-    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=128, .rlim_max=128}) == -1)
-        failure("Could not limit nproc\n");
     if (setrlimit(RLIMIT_CORE, &(struct rlimit){.rlim_cur=0, .rlim_max=0}) == -1)
         failure("Could not limit core\n");
     if (setrlimit(RLIMIT_FSIZE, &(struct rlimit){.rlim_cur=32*MiB, .rlim_max=32*MiB}) == -1)
@@ -291,6 +299,9 @@ int deleteent(const char *fpath, const struct stat *sb, int typeflag, struct FTW
 
 int main(int argc, char **argv)
 {
+    struct __user_cap_header_struct hdr;
+    struct __user_cap_data_struct data;
+    void *mem;
     char logname[1024];
     int status, st, linkst;
     int logdir;
@@ -324,14 +335,20 @@ int main(int argc, char **argv)
         failure("Could not generate log file name");
 
     /* and start up the process that does actual work */
-    pid = fork();
+    mem = malloc(4*1024*1024);
+    if (!mem)
+        failure("Could not allocate child stack");
+    pid = clone(runsession, mem, CLONE_NEWPID, NULL);
     if (pid == -1) {
-        failure("Could not fork");
-    } else if (pid == 0) {
-        if (setsid() == -1)
-            failure("Could not set session id\n");
-        runsession();
+        failure("Could not start subprocess\n");
     } else {
+        /* more priv drops */
+        capget(&hdr, &data);
+        data.effective = 0;
+        data.permitted = 0;
+        capset(&hdr, &data);
+
+        /* watchdog */
         usleep(500*1000); /* 500 ms for the command to run */
         status = 0;
         st = waitexit(pid, &status, WNOHANG);
