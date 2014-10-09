@@ -134,6 +134,8 @@ char *buildfiles[] = {
     "lib/myr/libregex.a",
     "lib/myr/bio",
     "lib/myr/libbio.a",
+    "lib/myr/cryptohash",
+    "lib/myr/libcryptohash.a",
     "lib/myr/date",
     "lib/myr/libdate.a",
     "lib/myr/_myrrt.o",
