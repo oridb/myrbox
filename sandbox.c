@@ -244,8 +244,6 @@ int runsession(void *p)
     struct __user_cap_data_struct data;
 
     /* more priv drops */
-    if (setrlimit(RLIMIT_NPROC, &(struct rlimit){.rlim_cur=16, .rlim_max=16}) == -1)
-        failure("Could not limit nproc\n");
     capget(&hdr, &data);
     data.effective = 0;
     data.permitted = 0;
