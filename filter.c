@@ -57,6 +57,7 @@ static struct sock_filter masterfilter[] = {
     Allow(open),
     Allow(openat),
     Allow(read),
+    Allow(clock_gettime),
     Allow(restart_syscall),
     Allow(rt_sigprocmask),
     Allow(setsid),
@@ -68,7 +69,7 @@ static struct sock_filter masterfilter[] = {
     Allow(write),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
 };
 
 struct sock_fprog masterprog = {
@@ -119,6 +120,7 @@ struct sock_filter compilefilter[] = {
     Allow(read),
     Allow(restart_syscall),
     Allow(rt_sigprocmask),
+    Allow(clock_gettime),
     Allow(setsid),
     Allow(stat),
     Allow(tgkill),
@@ -128,7 +130,7 @@ struct sock_filter compilefilter[] = {
     Allow(write),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
 };
 
 struct sock_fprog compileprog = {
@@ -152,9 +154,10 @@ struct sock_filter runfilter[] = {
     Allow(mmap),
     Allow(munmap),
     Allow(write),
+    Allow(clock_gettime),
 
     /* and if we don't match above, die */
-    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+    BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_TRAP),
 };
 struct sock_fprog runprog = {
     .len = sizeof(runfilter)/sizeof(runfilter[0]),
