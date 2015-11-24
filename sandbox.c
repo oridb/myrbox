@@ -118,7 +118,7 @@ int tempdir(char *base, char *buf, size_t nbuf)
  */
 char *buildfiles[] = {
     /* binaries */
-    "myrbuild",
+    "mbld",
     "6m",
     "as",
     "ld",
@@ -129,6 +129,8 @@ char *buildfiles[] = {
     "lib64/libdl.so.2",
     "lib64/libc.so.6",
     "lib64/ld-linux-x86-64.so.2",
+    "lib/myr/sys",
+    "lib/myr/libsys.a",
     "lib/myr/std",
     "lib/myr/libstd.a",
     "lib/myr/regex",
@@ -240,7 +242,8 @@ void run(char *dir, char **cmd, struct sock_fprog *filter, int catchstderr)
 
 int runsession(void *p)
 {
-    char *buildcmd[] = {"myrbuild", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
+    /* compile commands */
+    char *buildcmd[] = {"mbld", "-b", "a.out", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
     char *runcmd[] = {"/a.out", NULL};
     struct __user_cap_header_struct hdr;
     struct __user_cap_data_struct data;
@@ -355,7 +358,7 @@ int main(int argc, char **argv)
         status = 0;
         st = waitexit(pid, &status, WNOHANG);
         if (st == 0) {
-            message("Invcation timed out\n");
+            message("Invocation timed out\n");
             if (kill(-pid, 9) == -1) 
                 failure("Could not kill sid %d\n", pid);
         } else if (st != 1) {
