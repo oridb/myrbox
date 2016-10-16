@@ -129,17 +129,19 @@ char *buildfiles[] = {
     "lib64/libdl.so.2",
     "lib64/libc.so.6",
     "lib64/ld-linux-x86-64.so.2",
-    "lib/myr/sys",
+    "lib/myr/libsys.use",
     "lib/myr/libsys.a",
-    "lib/myr/std",
+    "lib/myr/libstd.use",
     "lib/myr/libstd.a",
-    "lib/myr/regex",
+    "lib/myr/libregex.use",
     "lib/myr/libregex.a",
-    "lib/myr/bio",
+    "lib/myr/libtestr.use",
+    "lib/myr/libtestr.a",
+    "lib/myr/libbio.use",
     "lib/myr/libbio.a",
-    "lib/myr/cryptohash",
+    "lib/myr/libcryptohash.use",
     "lib/myr/libcryptohash.a",
-    "lib/myr/date",
+    "lib/myr/libdate.use",
     "lib/myr/libdate.a",
     "lib/myr/_myrrt.o",
     NULL
@@ -240,7 +242,7 @@ void run(char *dir, char **cmd, struct sock_fprog *filter, int catchstderr)
     }
 }
 
-int runsession(void *p)
+void runsession()
 {
     /* compile commands */
     char *buildcmd[] = {"mbld", "-b", "a.out", "in.myr", "-I", "/lib/myr", "-r", "/lib/myr/_myrrt.o", NULL};
@@ -253,6 +255,7 @@ int runsession(void *p)
     data.effective = 0;
     data.permitted = 0;
     capset(&hdr, &data);
+
     /* run commands */
     setupcompile();
     readpost(builddir);
@@ -262,7 +265,7 @@ int runsession(void *p)
         failure("Could not access compiled output");
     }
     run(runpath, runcmd, &runprog, 1);
-    return 0;
+    exit(0);
 }
 
 /* sets up resource limits and chroots */
@@ -306,7 +309,6 @@ int main(int argc, char **argv)
 {
     struct __user_cap_header_struct hdr;
     struct __user_cap_data_struct data;
-    void *mem;
     char logname[1024];
     int status, st, linkst;
     int logdir;
@@ -340,11 +342,13 @@ int main(int argc, char **argv)
         failure("Could not generate log file name");
 
     /* and start up the process that does actual work */
-    mem = malloc(4*1024*1024);
-    if (!mem)
-        failure("Could not allocate child stack");
-    pid = clone(runsession, mem, CLONE_NEWPID, NULL);
+    pid = fork();
     if (pid == -1) {
+        failure("Could not start process\n");
+    } else if (pid == 0) {
+        if (setsid() == -1)
+            failure("Could not set session id\n");
+        runsession();
         failure("Could not start subprocess\n");
     } else {
         /* more priv drops */
@@ -370,10 +374,10 @@ int main(int argc, char **argv)
             failure("failed to wait for PID %d\n", pid);
         }
         linkst = linkat(builddir, "in.myr", logdir, logname, 0);
-        nftw(buildpath, deleteent, FTW_DEPTH, 512);
-        nftw(runpath, deleteent, FTW_DEPTH, 512);
         if (linkst == -1)
             failure("Could not link logfile\n");
+        nftw(buildpath, deleteent, FTW_DEPTH, 512);
+        nftw(runpath, deleteent, FTW_DEPTH, 512);
     }
     return 0;
 }

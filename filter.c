@@ -27,6 +27,8 @@ static struct sock_filter masterfilter[] = {
     Allow(prctl),
     Allow(brk),
     Allow(chdir),
+    Allow(capget),
+    Allow(capset),
     Allow(chmod),
     Allow(chroot),
     Allow(clone),
