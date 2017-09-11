@@ -67,6 +67,7 @@ static struct sock_filter masterfilter[] = {
     Allow(tgkill),
     Allow(umask),
     Allow(uname),
+    Allow(unlink),
     Allow(wait4),
     Allow(write),
 
@@ -113,6 +114,7 @@ struct sock_filter compilefilter[] = {
     Allow(linkat),
     Allow(lseek),
     Allow(lstat),
+    Allow(mkdir),
     Allow(mmap),
     Allow(mprotect),
     Allow(munmap),
@@ -128,6 +130,7 @@ struct sock_filter compilefilter[] = {
     Allow(tgkill),
     Allow(umask),
     Allow(uname),
+    Allow(unlink),
     Allow(wait4),
     Allow(write),
 
